@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fireworks Animation</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: black;
+      height: 100%;
+      width: 100%;
+      font-family: Arial, sans-serif;
+      color: white;
+    }
+    .controls {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 8px;
+      z-index: 100;
+    }
+    .controls h3 {
+      margin: 0 0 10px 0;
+    }
+    .control-group, .toggle-group {
+      margin-bottom: 10px;
+    }
+    .instructions {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 10px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="fireworks"></canvas>
+
+<div class="controls">
+  <h3>🎆 Fireworks Control</h3>
+  
+  <div class="toggle-group">
+    <input type="checkbox" id="autoLaunch" checked>
+    <label for="autoLaunch">Auto Launch</label>
+  </div>
+  
+  <div class="control-group">
+    <label>Launch Frequency <span class="value-display" id="freqValue">Normal</span></label>
+    <input type="range" id="frequency" min="1" max="5" value="3" step="1">
+  </div>
+  
+  <div class="toggle-group">
+    <input type="checkbox" id="soundEnabled" checked>
+    <label for="soundEnabled">Sound Effects</label>
+  </div>
+  
+  <div class="control-group">
+    <button id="manualLaunch">Launch Firework! 🎇</button>
+  </div>
+</div>
+
+<div class="instructions">
+  Click anywhere to launch a firework!
+</div>
+
+<script>
+/* Paste your fireworks JS code here */
+const canvas = document.getElementById('fireworks');
+const ctx = canvas.getContext('2d');
+let particles = [], rockets = [], autoLaunchEnabled = true, soundEnabled = true, launchFrequency = 3;
+let audioContext = null, audioInitialized = false;
+
+function initAudioContext() {
+  if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  if(audioContext.state==='suspended') audioContext.resume().then(()=>{audioInitialized=true;});
+  else audioInitialized=true;
+}
+
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize); resize();
+function random(min,max){return Math.random()*(max-min)+min;}
+
+function playLaunchSound(){ if(!soundEnabled||!audioContext||!audioInitialized) return; try{const o=audioContext.createOscillator(); const g=audioContext.createGain(); o.connect(g); g.connect(audioContext.destination); o.frequency.setValueAtTime(100,audioContext.currentTime); o.frequency.exponentialRampToValueAtTime(300,audioContext.currentTime+0.3); g.gain.setValueAtTime(0.1,audioContext.currentTime); g.gain.exponentialRampToValueAtTime(0.01,audioContext.currentTime+0.3); o.start(audioContext.currentTime); o.stop(audioContext.currentTime+0.3);}catch(err){console.log('Launch sound failed',err);}}
+function playExplosionSound(){ if(!soundEnabled||!audioContext||!audioInitialized)return; try{const buf=audioContext.createBuffer(1,audioContext.sampleRate*0.5,audioContext.sampleRate); const data=buf.getChannelData(0); for(let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*Math.exp(-i/(data.length/4)); const noise=audioContext.createBufferSource(); noise.buffer=buf; const filter=audioContext.createBiquadFilter(); filter.type='bandpass'; filter.frequency.value=1000; const gain=audioContext.createGain(); gain.gain.setValueAtTime(0.15,audioContext.currentTime); gain.gain.exponentialRampToValueAtTime(0.01,audioContext.currentTime+0.5); noise.connect(filter); filter.connect(gain); gain.connect(audioContext.destination); noise.start(audioContext.currentTime); noise.stop(audioContext.currentTime+0.5);}catch(err){console.log('Explosion sound failed',err);}}
+
+class Rocket {
+  constructor(x,yTarget){this.x=x;this.y=canvas.height;this.targetY=yTarget;this.speed=random(4,7);this.trail=[];this.exploded=false;}
+  update(){if(!this.exploded){this.trail.push({x:this.x,y:this.y,alpha:1});if(this.trail.length>15)this.trail.shift(); this.y-=this.speed; if(this.y<=this.targetY){this.exploded=true;this.explode();return true;}} return false;}
+  draw(){this.trail.forEach((p,i)=>{ctx.globalAlpha=(i/this.trail.length)*p.alpha;ctx.fillStyle='#ffcc66';ctx.beginPath();ctx.arc(p.x,p.y,2,0,2*Math.PI);ctx.fill();});ctx.globalAlpha=1;ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(this.x,this.y,3,0,2*Math.PI);ctx.fill();}
+  explode(){playExplosionSound(); createFirework(this.x,this.y);}
+}
+
+function createFirework(x,y){const count=random(60,100);for(let i=0;i<count;i++){const angle=random(0,Math.PI*2);const speed=random(1,5);particles.push({x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,alpha:1,color:'#ffcc66',gravity:0.05,size:random(2,4),trail:[]});}}
+
+function launchRocket(){const x=random(canvas.width*0.2,canvas.width*0.8);const y=random(canvas.height*0.2,canvas.height*0.5);rockets.push(new Rocket(x,y));playLaunchSound();}
+
+let lastLaunch=0,nextLaunchDelay=0;
+function autoLaunch(timestamp){if(!autoLaunchEnabled) return; const baseDelays=[3000,2500,2000,1500,1000]; const baseDelay=baseDelays[launchFrequency-1]; if(timestamp-lastLaunch>nextLaunchDelay){launchRocket();lastLaunch=timestamp;nextLaunchDelay=baseDelay+random(-baseDelay*0.4,baseDelay*0.4);}}
+
+canvas.addEventListener('click',e=>{initAudioContext();rockets.push(new Rocket(e.clientX,random(canvas.height*0.2,canvas.height*0.5)));playLaunchSound();});
+
+document.getElementById('autoLaunch').addEventListener('change',e=>{initAudioContext();autoLaunchEnabled=e.target.checked;});
+document.getElementById('frequency').addEventListener('input',e=>{initAudioContext();launchFrequency=parseInt(e.target.value);const labels=['Very Slow','Slow','Normal','Fast','Very Fast'];document.getElementById('freqValue').textContent=labels[launchFrequency-1];});
+document.getElementById('soundEnabled').addEventListener('change',e=>{initAudioContext();soundEnabled=e.target.checked;});
+document.getElementById('manualLaunch').addEventListener('click',()=>{initAudioContext();launchRocket();});
+
+function update(t){ctx.fillStyle='rgba(0,0,0,0.1)';ctx.fillRect(0,0,canvas.width,canvas.height);for(let i=rockets.length-1;i>=0;i--){const e=rockets[i].update();rockets[i].draw();if(e)rockets.splice(i,1);}for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=p.gravity;p.vx*=0.99;p.alpha-=0.008;if(p.alpha<=0){particles.splice(i,1);continue;}ctx.globalAlpha=p.alpha;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,2*Math.PI);ctx.fill();}autoLaunch(t);requestAnimationFrame(update);}
+update(0);
+</script>
+
+</body>
+</html>
